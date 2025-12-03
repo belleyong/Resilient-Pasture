@@ -134,5 +134,3 @@ ggplot(comp, aes(x = OurMonthMean, y = WayneMonthMean)) +
        x = "Ruakura (monthly mean, kg DM/ha)",
        y = "VCS (monthly mean, kg DM/ha)") +
   theme_minimal(base_size = 12)
-
-view(rua_raw)
