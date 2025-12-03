@@ -22,8 +22,8 @@ comp_end   <- as.Date("2020-05-31")
 rua_raw <- read_csv(ruakura_file, skip = 21, col_names = FALSE, show_col_types = FALSE)
 
 rua <- rua_raw %>%
-  rename(Date_chr = X1, PGR = X2) %>%
-  mutate(Date = suppressWarnings(as.POSIXct(Date_chr, format = "%d/%m/%Y %H:%M", tz = "UTC"))) %>%
+  rename(Date = X1, PGR = X2) %>%
+  mutate(Date = as.Date(Date, format = "%d/%m/%Y %H:%M")) %>%
   filter(!is.na(Date)) %>%
   filter(Date >= start_date, Date <= end_date) %>%
   mutate(
@@ -134,3 +134,14 @@ ggplot(comp, aes(x = OurMonthMean, y = WayneMonthMean)) +
        x = "Ruakura (monthly mean, kg DM/ha)",
        y = "VCS (monthly mean, kg DM/ha)") +
   theme_minimal(base_size = 12)
+
+# calibrated growth ####
+calibrated <- read_csv(scott_farm) %>%
+  rename(Month = '...1') %>%
+  rename_with(~ str_replace_all(.x, '"', '')) %>%
+  drop_na(Month) %>%
+  # transform the data from wide form to long form for comparison
+  pivot_longer(cols = 2:15, names_to = 'Year', values_to = 'PGR') %>%
+  select(Year, Month, PGR)
+
+view(calibrated)
