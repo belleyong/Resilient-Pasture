@@ -9,7 +9,7 @@ out_monthly_stats_calendar <- "monthly_stats_calendar.csv"
 out_monthly_means_prod     <- "monthly_means_production.csv"
 out_annual_means_prod      <- "annual_mean_production.csv"
 out_comp_table             <- "comparison_wayne_vs_ruakura.csv"
-out_plot_box               <- "boxplot_monthly_means_by_prodmonth.png"
+out_plot_box               <- "boxplot_monthly_means_by_prodMonth.png"
 out_plot_scatter           <- "scatter_wayne_vs_ruakura.png"
 
 # Date windows
@@ -31,8 +31,8 @@ rua <- rua_raw %>%
     Month = month(Date),
     # Production-year (Jun..May)
     ProdYear  = if_else(Month >= 6, Year, Year - 1),
-    ProdLabel = paste0(ProdYear, "/", str_sub(ProdYear + 1, 3, 4)),
-    ProdMonth = if_else(Month >= 6, Month - 5, Month + 7),  # Jun=1 … May=12
+    prodYear = paste0(ProdYear, "/", str_sub(ProdYear + 1, 3, 4)),
+    prodMonth = if_else(Month >= 6, Month - 5, Month + 7),  # Jun=1 … May=12
     Season = case_when(
       Month %in% c(12, 1, 2) ~ "Summer",
       Month %in% c(3, 4, 5)  ~ "Autumn",
@@ -59,16 +59,15 @@ write_csv(calculation, out_monthly_stats_calendar)
 
 # production year/month ####
 month_prod <- rua %>%
-  group_by(ProdLabel, ProdMonth) %>%
+  group_by(prodYear, prodMonth) %>%
   summarise(OurMonthMean = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
-  arrange(ProdLabel, ProdMonth)
-
-write_csv(month_prod, out_monthly_means_prod)
+  mutate(OurMonthMean = round(OurMonthMean, 2)) %>%
+  arrange(prodYear, prodMonth)
 
 annual_prod <- rua %>%
-  group_by(ProdLabel) %>%
+  group_by(prodYear) %>%
   summarise(AnnualGrowth = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
-  arrange(ProdLabel)
+  arrange(prodYear)
 
 write_csv(annual_prod, out_annual_means_prod)
 
@@ -95,16 +94,16 @@ wayne_long <- wayne_tbl %>%
     Date  = as.Date(sprintf("%04d-%02d-01", Yr, Month)),
     WayneMonthMean = suppressWarnings(as.numeric(str_replace(value, ",", ""))),
     ProdYear  = if_else(Month >= 6, Yr, Yr - 1),
-    ProdLabel = paste0(ProdYear, "/", str_sub(ProdYear + 1, 3, 4)),
-    ProdMonth = if_else(Month >= 6, Month - 5, Month + 7)
+    prodYear = paste0(ProdYear, "/", str_sub(ProdYear + 1, 3, 4)),
+    prodMonth = if_else(Month >= 6, Month - 5, Month + 7)
   ) %>%
   filter(Date >= comp_start, Date <= comp_end) %>%
   # KEEP Yr, Month, Date so we can label with calendar month/year in the final table
-  select(ProdLabel, ProdMonth, WayneMonthMean, Yr, Month, Date)
+  select(prodYear, prodMonth, WayneMonthMean, Yr, Month, Date)
 
 # compare vcs (wayne) and ruakura ####
 comp <- month_prod %>%
-  inner_join(wayne_long, by = c("ProdLabel","ProdMonth")) %>%
+  inner_join(wayne_long, by = c("prodYear","prodMonth")) %>%
   mutate(
     Diff      = WayneMonthMean - OurMonthMean,
     MonthYear = paste0(month.abb[Month], " ", Yr),  # e.g., "Jun 2010"
@@ -117,7 +116,7 @@ monthLabel <- c("Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr
 
 # box plot ####
 p_box <- ggplot(month_prod,
-                aes(x = factor(ProdMonth, levels = 1:12, labels = monthLabel),
+                aes(x = factor(prodMonth, levels = 1:12, labels = monthLabel),
                     y = OurMonthMean)) +
   geom_boxplot(outlier.alpha = 0.4, fill = "lightsteelblue") +
   stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "navy") +
@@ -136,12 +135,28 @@ ggplot(comp, aes(x = OurMonthMean, y = WayneMonthMean)) +
   theme_minimal(base_size = 12)
 
 # calibrated growth ####
-calibrated <- read_csv(scott_farm) %>%
-  rename(Month = '...1') %>%
+months <- c("JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER","JANUARY","FEBRUARY","MARCH","APRIL","MAY")
+
+scott_long <- read_csv(scott_farm) %>%
   rename_with(~ str_replace_all(.x, '"', '')) %>%
+  rename(Month = 1) %>%
   drop_na(Month) %>%
   # transform the data from wide form to long form for comparison
-  pivot_longer(cols = 2:15, names_to = 'Year', values_to = 'PGR') %>%
-  select(Year, Month, PGR)
+  # only took 2011/12 - 2023/24 bc our data only has till june 2024
+  pivot_longer(cols = 2:14, names_to = 'Year', values_to = 'PGR') %>%
+  mutate(prodYear = sub("^(\\d{2})", "20\\1", Year),
+         prodMonth = match(Month , months),
+         PGR = suppressWarnings(as.numeric(str_replace(PGR, ",", ""))), #clean numeric
+         ) %>%
+  select(prodYear, prodMonth, PGR, Month)
+  
 
-view(calibrated)
+# compare scott w ruakura ####
+scottVSrua <- month_prod %>%
+  inner_join(scott_long, by = c("prodYear", "prodMonth")) %>%
+  mutate(
+    Diff = PGR - OurMonthMean,
+  ) %>%
+  select(prodYear, Month, OurMonthMean, PGR, Diff)
+  
+view(scottVSrua)
