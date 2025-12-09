@@ -62,7 +62,9 @@ all_prodYear <- all1 %>%
   mutate(
     # If date is in format like "dd/mm/YYYY HH:MM", parse once 
     # If it is already Date, then code will keep date 
-    Date = if (inherits(Date, "Date")) Date else as.Date(Date, format = "%d/%m/%Y %H:%M"),
+    Date = if (inherits(Date, "Date")) Date else as.Date(Date, format = "%d/%m/%Y %H:%M")) %>%
+  filter(!is.na(Date))  %>%# keep only valid dates 
+  mutate(
     Year = as.integer(format(Date, "%Y")),
     Month = as.integer(format(Date, "%m")),
     anchorYear = if_else(Month >= 6, Year, Year - 1),
@@ -79,8 +81,7 @@ all_prodYear <- all1 %>%
       Month %in% c(6, 7, 8)  ~ "Winter",
       Month %in% c(9, 10, 11)~ "Spring"
     )
-  ) %>%
-  filter(!is.na(Date)) # keep only valid dates 
+  )
 
 # ---- Filter to Horotiu Soil + 1.5 fertility ----
 horotiu_focus <- all_prodYear %>% 
@@ -120,12 +121,15 @@ horotiu_focus %>%
   theme_minimal()
 
 # ---- production-month progression, faceted by production year ----
-ggplot(horotiu_focus %>% filter(prodYear != "2024/25"), aes(monthLabel, PGR, colour = Station, 
+ggplot(horotiu_focus %>% filter(prodYear != "2024/25", !is.na(monthLabel)), aes(monthLabel, PGR, colour = Station, 
                           group = interaction(Station, prodYear))) +
-  geom_line() + geom_point(size = 0.8) + 
+  geom_line(na.rm = TRUE) + 
+  scale_x_discrete(drop = FALSE) +
   facet_wrap(~ prodYear) + 
   labs(title = "PGR by Production Month - Horotiu, Fertility 1.5",
        x = "Production month (Jun -> May)", y = "PGR") + 
   scale_color_brewer(palette = "PuOr") +
-  theme(plot.title = element_text(hjust = 0.5)) # nake title middle 
+  theme(plot.title = element_text(hjust = 0.5), # make title center 
+        plot.subtitle = element_text(hjust = 0.5)) # make everything centered 
+
   
