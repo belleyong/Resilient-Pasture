@@ -5,6 +5,7 @@ library(readr)
 library(stringr)
 library(purrr)
 library(ggplot2) 
+library(forcats)
 
 # ---- Set correct folder ----
 folder <- "Dec2025"   # <- adjust if needed
@@ -34,7 +35,7 @@ process_file <- function(path) {
       values_to = "PGR"
     ) %>%
     mutate(
-      PGR = as.numeric(PGR),
+      PGR = suppressWarnings(as.numeric(PGR)),
       # parse dd/mm/YYYY HH:MM safely; fall back to just date if needed
       DateTime = suppressWarnings(lubridate::dmy_hm(Date)),
       DateTime = if_else(is.na(DateTime), lubridate::dmy(Date), DateTime),
@@ -57,31 +58,45 @@ paddock <- tibble(
 all1 <- all %>%
   left_join(paddock, by = "Paddock")
 
-# ---- Add production year fields (generic across all soils/stations) ----
+min_year <- min(year(all1$Date), na.rm = TRUE)
+max_year <- max(year(all1$Date), na.rm = TRUE)
+               
+start_date <- as.Date(paste0(min_year, "-06-01"))
+end_date <- as.Date(paste0(max_year + 1, "-06-01"))
+
+# ---- Build Jun -> May Labels programmatically ---- ####
+prod_month <- as.character(
+  lubridate::month(
+    seq.Date(as.Date("2000-06-01"), by = "month", length.out = 12),
+    label = TRUE, abbr = TRUE, locale = "C"
+  )
+)
+
+# ---- Add production year fields (generic across all soils/stations) ---- ####
 all_prodYear <- all1 %>%
   mutate(
     # If date is in format like "dd/mm/YYYY HH:MM", parse once 
     # If it is already Date, then code will keep date 
-    Date = if (inherits(Date, "Date")) Date else as.Date(Date, format = "%d/%m/%Y %H:%M")) %>%
-  filter(!is.na(Date))  %>%# keep only valid dates 
+    Date = if (inherits(Date, "Date")) Date else as.Date(Date, format = "%d/%m/%Y %H:%M"), 
+    PGR = suppressWarnings(as.numeric(PGR))) %>%
+  filter(!is.na(Date), !is.na(PGR), Date >= start_date, Date < end_date)  %>%# keep only valid dates 
   mutate(
-    Year = as.integer(format(Date, "%Y")),
-    Month = as.integer(format(Date, "%m")),
+    Year = year(Date),
+    Month = month(Date),
     anchorYear = if_else(Month >= 6, Year, Year - 1),
     prodYear = paste0(anchorYear, "/", substr(anchorYear + 1, 3, 4)), # e.g. 2024/25
     prodMonth = ifelse(Month >= 6, Month - 5, Month + 7),             # Jun = 1 ... May = 12 
-    monthLabel = factor(format(Date, "%b"),
-                        levels = c("Jun", "Jul"
-                                   ,"Aug","Sep","Oct","Nov","Dec",
-                                   "Jan","Feb","Mar","Apr","May"),
-                        ordered = TRUE),
+    monthLabel = factor(
+      prod_month[prodMonth],
+      levels = prod_month,
+      ordered = TRUE
+      ),
     Season    = case_when(
       Month %in% c(12, 1, 2) ~ "Summer",
       Month %in% c(3, 4, 5)  ~ "Autumn",
       Month %in% c(6, 7, 8)  ~ "Winter",
       Month %in% c(9, 10, 11)~ "Spring"
-    )
-  )
+    ))
 
 # ---- Filter to Horotiu Soil + 1.5 fertility ----
 horotiu_focus <- all_prodYear %>% 
@@ -110,14 +125,14 @@ ggplot(horotiu_focus, aes(Date, PGR, colour = Station)) +
 
 # ---- Seasonal Pattern: average PGR by month (across years), per station ----
 horotiu_focus %>%
-  mutate(Month = lubridate::month(Date, label = TRUE)) %>% 
-  group_by(Station, Month) %>%
+  group_by(Station, monthLabel) %>%
   summarise(PGR_mean = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
-  ggplot(aes(Month, PGR_mean, group = Station, colour = Station)) +
+  ggplot(aes(monthLabel, PGR_mean, group = Station, colour = Station)) +
   geom_line() + geom_point() + 
+  scale_x_discrete(limits = prod_month, drop = FALSE) +
   labs(
-    title = "Seasonal profile of PGR (Horotiu, Fertility 1.5)",
-    x = "Month", y = "Mean PGR") +
+    title = "Seasonal profile of PGR by Production Month (Horotiu, Fertility 1.5)",
+    x = "Production Month", y = "Mean PGR") +
   theme_minimal()
 
 # ---- production-month progression, faceted by production year ----
