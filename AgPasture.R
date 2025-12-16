@@ -7,6 +7,20 @@ library(stringr)
 library(purrr)
 library(scales)
 
+# ---- Save plots ---- ####
+save_plots <- TRUE
+plots_dir <- file.path("AgPasture Plots")
+dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
+
+save_plot <- function(filename_stub, p, width = 12, height = 7, dpi = 300) {
+  if(save_plots) {
+    filename_stub <- gsub("\\s+", "_", tolower(filename_stub))
+    out_path <- file.path(plots_dir, paste0(filename_stub, ".png"))
+    ggplot2::ggsave(out_path, plot = p, width = width, height = height, dpi = dpi)
+    message(sprintf("Saved plot: %s", out_path))
+  }
+  invisible(p)
+}
 # User-configurable settings
 folder         <- "Dec2025"           # Input CSV folder
 skip_header    <- 20                  # Header rows to skip
@@ -90,18 +104,29 @@ all_prodYear <- all1 %>%
 data_use <- all_prodYear %>%
   mutate(monthLabel = factor(monthLabel, levels = prod_month, ordered = TRUE))
 
+# ---- Check if year have 12 prod month ---- ####
+month_counts <- data_use %>%
+  filter(!is.na(monthLabel)) %>%
+  distinct(Station, prodYear, anchorYear, monthLabel) %>%
+  count(Station, prodYear, anchorYear, name = "n_months") %>%
+  mutate(is_complete_year = n_months == 12)
+
 # ---- Aggregations (monthly/seasonal/annual) ---- ####
 monthlyMean <- data_use %>%
+  left_join(month_counts, by = c("Station","prodYear","anchorYear")) %>%
+  filter(is_complete_year) %>%
   group_by(Station, prodYear, anchorYear, monthLabel, Season) %>%
   summarise(mean_month = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
   arrange(anchorYear) %>%
   mutate(
-    # Short production year label, e.g., "23/24", ordered chronologically
     short_prodYear = paste0(substr(anchorYear, 3, 4), "/", substr(anchorYear + 1, 3, 4)),
     short_prodYear = factor(short_prodYear, levels = unique(short_prodYear), ordered = TRUE)
   )
 
+
 seasonalMean <- data_use %>%
+  left_join(month_counts, by = c("Station", "prodYear", "anchorYear")) %>%
+  filter(is_complete_year) %>%
   group_by(Station, prodYear, anchorYear, Season) %>%
   summarise(mean_season = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
   arrange(anchorYear) %>%
@@ -111,6 +136,8 @@ seasonalMean <- data_use %>%
   )
 
 seasonalSum <- data_use %>%
+  left_join(month_counts, by = c("Station", "prodYear", "anchorYear")) %>%
+  filter(is_complete_year) %>%
   group_by(Station, prodYear, anchorYear, Season) %>%
   summarise(seasonal_sum = sum(PGR, na.rm = TRUE), .groups = "drop") %>%
   arrange(anchorYear) %>%
@@ -120,6 +147,8 @@ seasonalSum <- data_use %>%
   )
 
 annualStation <- data_use %>%
+  left_join(month_counts, by = c("Station", "prodYear", "anchorYear")) %>%
+  filter(is_complete_year) %>%
   group_by(Station, prodYear, anchorYear) %>%
   summarise(
     annual_mean = mean(PGR, na.rm = TRUE),
@@ -202,6 +231,8 @@ p_box_monthProdGrowth <- ggplot(monthlyMean, aes(x = short_prodYear, y = mean_mo
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5))
+
+save_plot("box_monthPGR_by_year", p_box_monthProdGrowth)
 
 # SD vs year (points) facet by station
 p_sd_points_only <- ggplot(sd_by_year, aes(x = anchorYear, y = sd_month)) +
@@ -331,7 +362,7 @@ p_ecdf_seasonal_faceted <- ggplot(seasonalSum, aes(seasonal_sum)) +
 
 # Violin plot — vertical, stations on x, colours by Season (side-by-side)
 season_cols <- c("Summer"="#F2C14E","Autumn"="#D96C06","Winter"="#3772A1","Spring"="#2E8B57")
-p_violin_dodged <- ggplot(data_use, aes(x = Station, y = PGR, fill = Season)) +
+p_violin_dodged <- ggplot(monthlyMean, aes(x = Station, y = mean_month, fill = Season)) +
   geom_violin(
     alpha = 0.6, trim = TRUE, colour = "grey30",
     position = position_dodge(width = 0.85),
@@ -346,7 +377,7 @@ p_violin_dodged <- ggplot(data_use, aes(x = Station, y = PGR, fill = Season)) +
   theme(axis.text.x = element_text(angle = 30, hjust = 1))
 
 # ---- Violin plot ---- ####
-p_violin <- ggplot(data_use, aes(x = Station, y = PGR, fill = Season)) +
+p_violin <- ggplot(monthlyMean, aes(x = Station, y = mean_month, fill = Season)) +
   geom_violin(trim = TRUE, alpha = 0.5) +
   facet_wrap(~ Season) +
   labs(
