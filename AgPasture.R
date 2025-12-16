@@ -161,7 +161,6 @@ annualStation <- data_use %>%
     short_prodYear = factor(short_prodYear, levels = unique(short_prodYear), ordered = TRUE)
   )
 
-
 # ---- SD by year + models ---- ####
 sd_by_year <- monthlyMean %>%
   group_by(Station, prodYear, anchorYear) %>%
@@ -244,8 +243,12 @@ p_sd_points_only <- ggplot(sd_by_year, aes(x = anchorYear, y = sd_month)) +
   ) +
   theme_minimal()
 
+save_plot("sd_monthlymeanPGR_by_year", p_sd_points_only)
+
 # SD vs year + LM line
 p_sd_points_lm <- p_sd_points_only + geom_smooth(method = "lm", se = FALSE, colour = "grey30")
+
+save_plot("sd_monthlymeanPGR_by_year_lm", p_sd_points_lm)
 
 # SD vs seasonal average growth (scatter + LM), facet by station
 p_sd_vs_seasonal <- ggplot(sd_seasonal_df, aes(mean_seasonal_growth, sd_month)) +
@@ -259,6 +262,8 @@ p_sd_vs_seasonal <- ggplot(sd_seasonal_df, aes(mean_seasonal_growth, sd_month)) 
   ) +
   theme_minimal()
 
+save_plot("sd_vs_seasonal_avg_growth", p_sd_vs_seasonal)
+
 # (C) Box: y = mean_month, x = Station, facet by production month
 p_box_y_month_x_station <- ggplot(monthlyMean, aes(x = Station, y = mean_month)) +
   geom_boxplot(outlier.alpha = 0.5) +
@@ -269,6 +274,8 @@ p_box_y_month_x_station <- ggplot(monthlyMean, aes(x = Station, y = mean_month))
   ) +
   theme_minimal() +
   coord_flip()
+
+save_plot("box_monthlymeanPGR_by_station_facet_month", p_box_y_month_x_station)
 
 # (D) Box: y = mean_season, x = Station, facet by Season
 p_box_y_avgSeason_x_station <- ggplot(seasonalMean, aes(x = Station, y = mean_season)) +
@@ -281,6 +288,8 @@ p_box_y_avgSeason_x_station <- ggplot(seasonalMean, aes(x = Station, y = mean_se
   theme_minimal() +
   coord_flip()
 
+save_plot("box_seasonalmeanPGR_by_station_facet_season", p_box_y_avgSeason_x_station)
+
 # (E) Box: monthly mean by Station, facet by Season
 p_box_monthYearAvg_stationX_facetSeason <- ggplot(monthlyMean, aes(x = Station, y = mean_month)) +
   geom_boxplot(outlier.alpha = 0.5) +
@@ -292,6 +301,8 @@ p_box_monthYearAvg_stationX_facetSeason <- ggplot(monthlyMean, aes(x = Station, 
   theme_minimal() +
   coord_flip()
 
+save_plot("box_monthlymeanPGR_by_station_facet_season", p_box_monthYearAvg_stationX_facetSeason)
+
 # Peak & lowest month per year per station — table + labeled plot
 peaks_troughs <- monthlyMean %>%
   group_by(Station, prodYear, anchorYear) %>%
@@ -302,7 +313,6 @@ peaks_troughs <- monthlyMean %>%
     low_value  = min(mean_month, na.rm = TRUE),
     .groups = "drop"
   )
-
 
 # Use the peaks_troughs table ####
 p_lollipop_peak_low <- ggplot(peaks_troughs, aes(x = anchorYear)) +
@@ -333,6 +343,8 @@ p_lollipop_peak_low <- ggplot(peaks_troughs, aes(x = anchorYear)) +
     x = "Prod. Year", y = "Mean Monthly PGR"
   ) 
 
+save_plot("peak_trough_month", p_lollipop_peak_low)
+
 # ---- ECDFs (cumulative distribution) — annual & seasonal ---- ####
 p_ecdf_annual_allStations <- ggplot(annualStation, aes(annual_sum, colour = Station)) +
   stat_ecdf(geom = "step", linewidth = 1) +
@@ -341,6 +353,8 @@ p_ecdf_annual_allStations <- ggplot(annualStation, aes(annual_sum, colour = Stat
     x = "Annual yield (sum PGR)", y = "Cumulative probability"
   ) +
   theme_minimal()
+
+save_plot("ecdf_annual_yield_all_stations", p_ecdf_annual_allStations)
 
 p_ecdf_annual_facetedStation <- ggplot(annualStation, aes(annual_sum)) +
   stat_ecdf(geom = "step", colour = "steelblue", linewidth = 0.9) +
@@ -351,6 +365,8 @@ p_ecdf_annual_facetedStation <- ggplot(annualStation, aes(annual_sum)) +
   ) +
   theme_minimal()
 
+save_plot("ecdf_annual_yield_facet_stations", p_ecdf_annual_facetedStation)
+
 p_ecdf_seasonal_faceted <- ggplot(seasonalSum, aes(seasonal_sum)) +
   stat_ecdf(geom = "step", colour = "steelblue", linewidth = 0.8) +
   facet_grid(Station ~ Season, scales = "free_x") +
@@ -359,6 +375,8 @@ p_ecdf_seasonal_faceted <- ggplot(seasonalSum, aes(seasonal_sum)) +
     x = "Seasonal yield (sum PGR)", y = "Cumulative probability"
   ) +
   theme_minimal()
+
+save_plot("ecdf_annual_yield_station_by_season", p_ecdf_seasonal_faceted)
 
 # Violin plot — vertical, stations on x, colours by Season (side-by-side)
 season_cols <- c("Summer"="#F2C14E","Autumn"="#D96C06","Winter"="#3772A1","Spring"="#2E8B57")
@@ -376,6 +394,8 @@ p_violin_dodged <- ggplot(monthlyMean, aes(x = Station, y = mean_month, fill = S
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 30, hjust = 1))
 
+save_plot("violin_monthly_mean_station_season_dodged", p_violin_dodged)
+
 # ---- Violin plot ---- ####
 p_violin <- ggplot(monthlyMean, aes(x = Station, y = mean_month, fill = Season)) +
   geom_violin(trim = TRUE, alpha = 0.5) +
@@ -386,6 +406,8 @@ p_violin <- ggplot(monthlyMean, aes(x = Station, y = mean_month, fill = Season))
   ) +
   theme_minimal() +
   coord_flip()
+
+save_plot("violin_monthly_mean_station_facet_season", p_violin)
 
 # -----------------------------
 p_violin_overlay <- ggplot(monthlyMean, aes(x = Station, y = mean_month, fill = Season)) +
@@ -404,6 +426,8 @@ p_violin_overlay <- ggplot(monthlyMean, aes(x = Station, y = mean_month, fill = 
   theme(
     legend.position = "right",
     axis.text.x = element_text(angle = 30, hjust = 1))
+
+save_plot("violin_monthly_mean_station_overlay_season", p_violin_overlay)
 
 # ---- Summary tables (mean, median, SD, CV) --- ####
 annual_summary_station <- annualStation %>%
