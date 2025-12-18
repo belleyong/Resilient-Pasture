@@ -1,0 +1,115 @@
+---
+title: "Resilient Pasture - Project Analysis Report"
+author: "Belle Yong"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    #theme: cerulean
+    code_folding: show
+params:
+  focus_station: "Ruakura"
+  save_plots: true 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+   echo = TRUE, message = TRUE, warning = TRUE,
+  fig.width = 12, fig.height = 7, dpi = 300
+)
+```
+
+```{r setup-packages, warning=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 12, 
+  fig.height = 7,
+  dpi = 300
+)
+
+pkgs <- c(
+  "tidyverse", "lubridate", "glue", "broom", "stringr", "purrr", "scales", "readr"
+)
+
+use_pkg <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    suppressMessages(suppressWarnings(
+      install.packages(pkg, dependencies = TRUE)
+    ))
+  }
+  suppressMessages(library(pkg, character.only = TRUE))
+}
+
+invisible(lapply(pkgs, use_pkg))
+
+focus_station <- params$focus_station
+save_plots <- params$save_plots
+
+plots_dir <- "AgPasture Plots"
+dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
+
+save_plot <- function(filename_stub, p, width = 12, height = 7, dpi = 300){
+  if (isTRUE(save_plots)) {
+    filename_stub <- gsub("\\s+", "_", tolower(filename_stub))
+    ggsave(
+      file.path(plots_dir, paste0(filename_stub, ".png")),
+      plot = p, width = width, height = height, dpi = dpi
+    )
+  }
+  invisible(p)
+}
+```
+
+## User Settings 
+```{r}
+folder <- "Dec2025"
+skip_header = 20
+
+files <- list.files(folder, pattern = "\\.csv$", full.names = TRUE)
+if (length(files) == 0) stop(glue("No CSV files found in: {folder}"))
+
+process_file <- function(path) {
+  df <- readr::read_csv(path, skip = skip_header, show_col_types = FALSE) %>%
+    select(-contains("Events")) %>%
+    # Adjust if paddock columns are not exactly positions 2:7
+    rename_with(~ paste0("P", seq_along(.)), .cols = 2:7)
+  
+  date_col <- names(df) %>% keep(~ .x %in% c("Parameter:", "Parameter", "Date")) %>% first()
+  if (is.na(date_col)) stop(glue("No date/Parameter column found in: {basename(path)}"))
+  
+  df %>%
+    rename(Date = !!sym(date_col)) %>%
+    pivot_longer(
+      cols = matches("^P\\d+$"),
+      names_to = "Paddock",
+      values_to = "PGR"
+    ) %>%
+    mutate(
+      PGR      = suppressWarnings(as.numeric(PGR)),
+      DateTime = suppressWarnings(lubridate::dmy_hm(Date)),
+      DateTime = if_else(is.na(DateTime), lubridate::dmy(Date), DateTime),
+      Date     = as_date(DateTime),
+      Station  = str_remove(basename(path), "\\.csv$")
+    ) %>%
+    drop_na(PGR, Date) %>%
+    select(Date, Station, Paddock, PGR)
+}
+
+all <- map_df(files, process_file)
+```
+
+## Paddock Data 
+```{r}
+paddock <- tibble(
+  Paddock   = c("P1","P2","P3","P4","P5","P6"),
+  Soil      = c("Horotiu","Lismore","Tokomaru","Horotiu","Lismore","Tokomaru"),
+  Fertility = c(1.5,1.5,1.5,1,1,1)
+)
+
+all1 <- all %>%
+  left_join(paddock, by = "Paddock")
+```
