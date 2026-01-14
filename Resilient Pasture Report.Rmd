@@ -1,115 +1,216 @@
 ---
 title: "Resilient Pasture - Project Analysis Report"
 author: "Belle Yong"
-output:
-  html_document:
-    toc: true
-    toc_depth: 3
-    toc_float: true
-    number_sections: true
-    #theme: cerulean
-    code_folding: show
-params:
-  focus_station: "Ruakura"
-  save_plots: true 
+date: "`r Sys.Date()`"
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-   echo = TRUE, message = TRUE, warning = TRUE,
-  fig.width = 12, fig.height = 7, dpi = 300
-)
+library(tidyverse)
+library(lubridate)
+library(glue)
+library(broom)
+library(stringr)
+library(purrr)
+library(scales)
 ```
 
-```{r setup-packages, warning=FALSE}
-knitr::opts_chunk$set(
-  echo = FALSE,
-  message = FALSE,
-  warning = FALSE,
-  fig.width = 12, 
-  fig.height = 7,
-  dpi = 300
-)
+### Introduction
+This report presents an initial exploratory analysis for the __Resilient Pasture Project__.
+The purpose of this work is to establish baseline patterns in pasture production across multiple locations in New Zealand and to assess:
 
-pkgs <- c(
-  "tidyverse", "lubridate", "glue", "broom", "stringr", "purrr", "scales", "readr"
-)
+- Seasonal behaviour
+- Inter-annual variability
+- Long-term trends in pasture growth
 
-use_pkg <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    suppressMessages(suppressWarnings(
-      install.packages(pkg, dependencies = TRUE)
-    ))
-  }
-  suppressMessages(library(pkg, character.only = TRUE))
-}
+The results are derived from the __Whole Farm Model (WFM v8.3.a)__ using historical climate inputs.
 
-invisible(lapply(pkgs, use_pkg))
+This analysis is intended as a foundational study to support further development of the Resilient Pasture Project.
 
-focus_station <- params$focus_station
-save_plots <- params$save_plots
+### Data Sources 
+Pasture growth data were generated using WFM runs driven by __NIWA climate station data__.
 
-plots_dir <- "AgPasture Plots"
+Key characteristics:
+
+- Weather data sourced from different __NIWA climate stations__
+- Output is __daily__ or __periodic pasture growth rate (PGR)__
+- Six paddock-level outputs per station
+
+### Study Locations (Stations)
+This analysis includes multiple stations (sites) across __New Zealand__.
+
+Stations are grouped into regions as follows:
+
+- __Waikato__: Ruakura, Rotorua
+- __Bay of Plenty__: Tauranga, Te Puke, Whakatane
+- __Northland__: Kaikohe, Kerikeri, Whangarei
+
+Each station represents a distinct climate location.
+
+### Plots and Paddocks 
+Within each station, pasture growth is simulated for six paddocks, labelled:
+__P1, P2, P3, P4, P5, P6 __
+
+These paddocks are treated as __plots__ within a station and are assigned soil type and fertility class to represent contrasting production conditions. 
+Paddocks are not separate geographic locations; rather, they are experimental plots within each station run.
+
+```{r, include=FALSE}
+save_plots <- TRUE
+plots_dir <- file.path("AgPasture Plots")
 dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
 
-save_plot <- function(filename_stub, p, width = 12, height = 7, dpi = 300){
-  if (isTRUE(save_plots)) {
+save_plot <- function(filename_stub, p, width = 12, height = 7, dpi = 300) {
+  if(save_plots) {
     filename_stub <- gsub("\\s+", "_", tolower(filename_stub))
-    ggsave(
-      file.path(plots_dir, paste0(filename_stub, ".png")),
-      plot = p, width = width, height = height, dpi = dpi
-    )
+    out_path <- file.path(plots_dir, paste0(filename_stub, ".png"))
+    ggplot2::ggsave(out_path, plot = p, width = width, height = height, dpi = dpi)
+    message(sprintf("Saved plot: %s", out_path))
   }
   invisible(p)
 }
 ```
 
-## User Settings 
-```{r}
-folder <- "Dec2025"
-skip_header = 20
+```{r, include=FALSE}
+# Folder containing CSV files
+
+folder         <- "Dec2025"
+skip_header    <- 20
+focus_station  <- "Ruakura"
+out_dir        <- file.path("outputs", format(Sys.time(), "%Y%m%d-%H%M%S"))
 
 files <- list.files(folder, pattern = "\\.csv$", full.names = TRUE)
 if (length(files) == 0) stop(glue("No CSV files found in: {folder}"))
-
-process_file <- function(path) {
-  df <- readr::read_csv(path, skip = skip_header, show_col_types = FALSE) %>%
-    select(-contains("Events")) %>%
-    # Adjust if paddock columns are not exactly positions 2:7
-    rename_with(~ paste0("P", seq_along(.)), .cols = 2:7)
-  
-  date_col <- names(df) %>% keep(~ .x %in% c("Parameter:", "Parameter", "Date")) %>% first()
-  if (is.na(date_col)) stop(glue("No date/Parameter column found in: {basename(path)}"))
-  
-  df %>%
-    rename(Date = !!sym(date_col)) %>%
-    pivot_longer(
-      cols = matches("^P\\d+$"),
-      names_to = "Paddock",
-      values_to = "PGR"
-    ) %>%
-    mutate(
-      PGR      = suppressWarnings(as.numeric(PGR)),
-      DateTime = suppressWarnings(lubridate::dmy_hm(Date)),
-      DateTime = if_else(is.na(DateTime), lubridate::dmy(Date), DateTime),
-      Date     = as_date(DateTime),
-      Station  = str_remove(basename(path), "\\.csv$")
-    ) %>%
-    drop_na(PGR, Date) %>%
-    select(Date, Station, Paddock, PGR)
-}
-
-all <- map_df(files, process_file)
 ```
 
-## Paddock Data 
-```{r}
+```{r, include=FALSE}
+process_file <- function(path) {
+df <- readr::read_csv(path, skip = skip_header, show_col_types = FALSE) %>%
+select(-contains("Events")) %>%
+rename_with(~ paste0("P", seq_along(.)), .cols = 2:7)
+
+date_col <- names(df) %>% keep(~ .x %in% c("Parameter:", "Parameter", "Date")) %>% first()
+if (is.na(date_col)) stop(glue("No date/Parameter column found in: {basename(path)}"))
+
+df %>%
+rename(Date = !!sym(date_col)) %>%
+pivot_longer(cols = matches("^P\\d+$"), names_to = "Paddock", values_to = "PGR") %>%
+mutate(
+PGR      = suppressWarnings(as.numeric(PGR)),
+DateTime = suppressWarnings(lubridate::dmy_hm(Date)),
+DateTime = if_else(is.na(DateTime), lubridate::dmy(Date), DateTime),
+Date     = as_date(DateTime),
+Station  = str_remove(basename(path), "\\.csv$")
+) %>%
+drop_na(PGR, Date) %>%
+select(Date, Station, Paddock, PGR)
+}
+
+all_data <- map_df(files, process_file)
+```
+
+```{r, include=FALSE}
 paddock <- tibble(
-  Paddock   = c("P1","P2","P3","P4","P5","P6"),
-  Soil      = c("Horotiu","Lismore","Tokomaru","Horotiu","Lismore","Tokomaru"),
-  Fertility = c(1.5,1.5,1.5,1,1,1)
+Paddock   = c("P1","P2","P3","P4","P5","P6"),
+Soil      = c("Horotiu","Lismore","Tokomaru","Horotiu","Lismore","Tokomaru"),
+Fertility = c(1.5,1.5,1.5,1,1,1)
 )
 
-all1 <- all %>%
-  left_join(paddock, by = "Paddock")
+all_data <- all_data %>%
+left_join(paddock, by = "Paddock")
+```
+
+```{r, include=FALSE}
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+min_year <- min(year(all_data$Date), na.rm = TRUE)
+max_year <- max(year(all_data$Date), na.rm = TRUE)
+
+all_data <- all_data %>%
+mutate(
+Year       = year(Date),
+Month      = month(Date),
+anchorYear = year(Date %m-% months(5)),
+prodYear   = paste0(anchorYear, "/", substr(anchorYear + 1, 3, 4)),
+prodMonth  = ((Month - 6) %% 12) + 1L,
+monthLabel = factor(month.abb[prodMonth], levels = month.abb, ordered = TRUE),
+Season     = case_when(
+Month %in% c(12,1,2)  ~ "Summer",
+Month %in% c(3,4,5)   ~ "Autumn",
+Month %in% c(6,7,8)   ~ "Winter",
+Month %in% c(9,10,11) ~ "Spring",
+TRUE ~ NA_character_
+)
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+station_region <- tibble(
+Station = c('Ruakura','Rotorua','Tauranga','Te Puke','Whakatane','Kaikohe','Kerikeri','Whangarei'),
+Region  = c('Waikato','Waikato','Bay of Plenty','Bay of Plenty','Bay of Plenty','Northland','Northland','Northland')
+)
+
+all_data <- all_data %>%
+left_join(station_region, by = "Station")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Monthly means
+
+monthly_mean <- all_data %>%
+group_by(Station, prodYear, monthLabel) %>%
+summarise(mean_PGR = mean(PGR, na.rm = TRUE), .groups = "drop")
+
+# Seasonal means
+
+seasonal_mean <- all_data %>%
+group_by(Station, prodYear, Season) %>%
+summarise(mean_PGR = mean(PGR, na.rm = TRUE), .groups = "drop")
+
+# Annual station means
+
+annual_station <- all_data %>%
+group_by(Station, prodYear) %>%
+summarise(mean_PGR = mean(PGR, na.rm = TRUE), .groups = "drop")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p_monthly <- ggplot(monthly_mean, aes(x = monthLabel, y = mean_PGR, color = Station, group = Station)) +
+geom_line() +
+geom_point() +
+labs(title = "Monthly Mean Pasture Growth by Station", y = "Mean PGR (kg DM/ha/day)", x = "Month") +
+theme_minimal() + 
+theme(plot.title = element_text(hjust = 0.5))
+
+p_monthly
+save_plot("monthly_mean_by_station", p_monthly)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p_seasonal <- ggplot(seasonal_mean, aes(x = Season, y = mean_PGR, fill = Station)) +
+geom_col(position = "dodge") +
+labs(title = "Seasonal Mean Pasture Growth by Station", y = "Mean PGR", x = "Season") +
+theme_minimal() + 
+theme(plot.title = element_text(hjust = 0.5))
+
+p_seasonal
+save_plot("seasonal_mean_by_station", p_seasonal)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+horotiu_focus <- all_data %>% filter(Soil == "Horotiu", Fertility == 1.5)
+
+p_horotiu <- horotiu_focus %>%
+group_by(Station, monthLabel) %>%
+summarise(PGR_mean = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
+ggplot(aes(x = monthLabel, y = PGR_mean, color = Station, group = Station)) +
+geom_line(size = 1) +
+geom_point(size = 2) +
+labs(title = "Horotiu Fertility 1.5 Monthly Profile", y = "Mean PGR", x = "Month") +
+theme_minimal() + 
+theme(plot.title = element_text(hjust = 0.5))
+
+p_horotiu
+save_plot("horotiu_fertility1_5_profile", p_horotiu)
 ```
