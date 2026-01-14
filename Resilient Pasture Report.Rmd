@@ -15,7 +15,7 @@ library(purrr)
 library(scales)
 ```
 
-### Introduction
+## Introduction
 This report presents an initial exploratory analysis for the __Resilient Pasture Project__.
 The purpose of this work is to establish baseline patterns in pasture production across multiple locations in New Zealand and to assess:
 
@@ -27,7 +27,7 @@ The results are derived from the __Whole Farm Model (WFM v8.3.a)__ using histori
 
 This analysis is intended as a foundational study to support further development of the Resilient Pasture Project.
 
-### Data Sources 
+## Data Sources 
 Pasture growth data were generated using WFM runs driven by __NIWA climate station data__.
 
 Key characteristics:
@@ -36,7 +36,7 @@ Key characteristics:
 - Output is __daily__ or __periodic pasture growth rate (PGR)__
 - Six paddock-level outputs per station
 
-### Study Locations (Stations)
+## Study Locations (Stations)
 This analysis includes multiple stations (sites) across __New Zealand__.
 
 Stations are grouped into regions as follows:
@@ -47,7 +47,7 @@ Stations are grouped into regions as follows:
 
 Each station represents a distinct climate location.
 
-### Plots and Paddocks 
+## Plots and Paddocks 
 Within each station, pasture growth is simulated for six paddocks, labelled:
 __P1, P2, P3, P4, P5, P6 __
 
@@ -120,10 +120,6 @@ left_join(paddock, by = "Paddock")
 ```
 
 ```{r, include=FALSE}
-
-```
-
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
 min_year <- min(year(all_data$Date), na.rm = TRUE)
 max_year <- max(year(all_data$Date), na.rm = TRUE)
 
@@ -145,7 +141,7 @@ TRUE ~ NA_character_
 )
 ```
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
+```{r, include=FALSE}
 station_region <- tibble(
 Station = c('Ruakura','Rotorua','Tauranga','Te Puke','Whakatane','Kaikohe','Kerikeri','Whangarei'),
 Region  = c('Waikato','Waikato','Bay of Plenty','Bay of Plenty','Bay of Plenty','Northland','Northland','Northland')
@@ -155,12 +151,21 @@ all_data <- all_data %>%
 left_join(station_region, by = "Station")
 ```
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
+```{r, include=FALSE}
 # Monthly means
 
 monthly_mean <- all_data %>%
-group_by(Station, prodYear, monthLabel) %>%
-summarise(mean_PGR = mean(PGR, na.rm = TRUE), .groups = "drop")
+  group_by(Station, prodYear, anchorYear, monthLabel, Season) %>%  # include anchorYear here
+  summarise(mean_PGR = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    short_prodYear = paste0(
+      substr(prodYear, 3, 4), "/",
+      substr(prodYear, 8, 9)
+    )
+  )
+
+monthly_mean <- monthly_mean %>%
+  left_join(station_region, by = "Station")
 
 # Seasonal means
 
@@ -175,19 +180,144 @@ group_by(Station, prodYear) %>%
 summarise(mean_PGR = mean(PGR, na.rm = TRUE), .groups = "drop")
 ```
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
+```{r, include=FALSE}
+peaks_troughs <- monthly_mean %>%
+  group_by(Station, prodYear, anchorYear) %>%
+  summarise(
+    peak_month = monthLabel[which.max(mean_PGR)],
+    peak_value = max(mean_PGR, na.rm = TRUE),
+    low_month  = monthLabel[which.min(mean_PGR)],
+    low_value  = min(mean_PGR, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(station_region, by = "Station")
+```
+
+
+```{r box_monthly_northland, fig.align='center', echo=FALSE, message=FALSE, warning=FALSE}
+p_box_northland <- ggplot(
+  monthly_mean %>%
+    filter(Region == "Northland", short_prodYear != "24/"),  # remove 24/
+  aes(x = short_prodYear, y = mean_PGR)
+) +
+  geom_boxplot(
+    outlier.alpha = 0.5,
+    median.colour = "red",
+    median.size   = 0.8
+  ) +
+  facet_wrap(~ Station, scales = "free_y", nrow = 1) +  # horizontal facets
+  coord_flip() +
+  labs(
+    title = "Monthly Production Growth by Production Year — Northland",
+    x = "Production Year",
+    y = "Mean Monthly PGR"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    strip.text  = element_text(face = "bold")
+  )
+
+p_box_northland
+```
+
+```{r box_monthly_waikato, fig.align='center', echo=FALSE, message=FALSE, warning=FALSE}
+box_monthly_waikato <- ggplot(
+  monthly_mean %>%
+    filter(Region == "Waikato", short_prodYear != "24/"),  # remove 24/
+  aes(x = short_prodYear, y = mean_PGR)
+) +
+  geom_boxplot(
+    outlier.alpha = 0.5,
+    median.colour = "red",
+    median.size   = 0.8
+  ) +
+  facet_wrap(~ Station, scales = "free_y", nrow = 1) +  # horizontal facets
+  coord_flip() +
+  labs(
+    title = "Monthly Production Growth by Production Year — Waikato",
+    x = "Production Year",
+    y = "Mean Monthly PGR"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    strip.text  = element_text(face = "bold")
+  )
+
+box_monthly_waikato
+```
+
+```{r box_monthly_bop, fig.align='center', echo=FALSE, message=FALSE, warning=FALSE}
+box_monthly_bop <- ggplot(
+  monthly_mean %>%
+    filter(Region == "Waikato", short_prodYear != "24/"),  # remove 24/
+  aes(x = short_prodYear, y = mean_PGR)
+) +
+  geom_boxplot(
+    outlier.alpha = 0.5,
+    median.colour = "red",
+    median.size   = 0.8
+  ) +
+  facet_wrap(~ Station, scales = "free_y", nrow = 1) +  # horizontal facets
+  coord_flip() +
+  labs(
+    title = "Monthly Production Growth by Production Year — Bay Of Plenty",
+    x = "Production Year",
+    y = "Mean Monthly PGR"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    strip.text  = element_text(face = "bold")
+  )
+
+box_monthly_bop
+```
+
+
+```{r p_sd_points_only, fig.align='center', echo=FALSE, message=FALSE, warning=FALSE}
+sd_by_year <- monthly_mean %>%
+  group_by(Station, prodYear, anchorYear) %>%
+  summarise(sd_month = sd(mean_PGR, na.rm = TRUE), .groups = "drop")
+
+p_sd_points_only <- ggplot(sd_by_year, aes(x = anchorYear, y = sd_month)) +
+  geom_point(size = 2.5, alpha = 0.9, colour = "steelblue") +
+  facet_wrap(~ Station, scales = "free_y") +
+  labs(
+    title = "Standard Deviation of Monthly Average Growth within Production Year",
+    x = "Anchor Year (June start)", y = "SD of monthly mean PGR"
+  ) +
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    strip.text  = element_text(face = "bold")
+  )
+
+p_sd_points_only
+```
+
+This plot shows the __within-year variability__ of pasture growth, measured as the __standard deviation__ of monthly mean growth within each production year. Higher values indicate greater seasonal unevenness in growth during that year.
+
+```{r p_monthly, fig.align='center', echo=FALSE, message=FALSE, warning=FALSE}
 p_monthly <- ggplot(monthly_mean, aes(x = monthLabel, y = mean_PGR, color = Station, group = Station)) +
 geom_line() +
 geom_point() +
-labs(title = "Monthly Mean Pasture Growth by Station", y = "Mean PGR (kg DM/ha/day)", x = "Month") +
+labs(title = "Monthly Average Growth by Station", y = "Mean PGR (kg DM/ha/day)", x = "Month") +
 theme_minimal() + 
 theme(plot.title = element_text(hjust = 0.5))
 
 p_monthly
-save_plot("monthly_mean_by_station", p_monthly)
 ```
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+This scatter plot examines the relationship between __overall growth level__ and __within-year variability__. It assesses whether years with higher average growth tend to exhibit greater or lower variability, which is relevant for pasture resilience and feed reliability. The results indicate that August shows the highest variability, while February exhibits the lowest variability.
+
+```{r p_seasonal, fig.align='center', echo=FALSE, message=FALSE, warning=FALSE}
 p_seasonal <- ggplot(seasonal_mean, aes(x = Season, y = mean_PGR, fill = Station)) +
 geom_col(position = "dodge") +
 labs(title = "Seasonal Mean Pasture Growth by Station", y = "Mean PGR", x = "Season") +
@@ -195,22 +325,59 @@ theme_minimal() +
 theme(plot.title = element_text(hjust = 0.5))
 
 p_seasonal
-save_plot("seasonal_mean_by_station", p_seasonal)
 ```
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
-horotiu_focus <- all_data %>% filter(Soil == "Horotiu", Fertility == 1.5)
+This bar plot compares the mean pasture growth (PGR) for each season across different __stations__ with bars grouped side by side for each season. This can help identify how PGR varies by season and station, showing there is the most PGR variation during summer and least during winter. The station __Kaikohe__ has the most and least variation among the 8 stations. 
 
-p_horotiu <- horotiu_focus %>%
-group_by(Station, monthLabel) %>%
-summarise(PGR_mean = mean(PGR, na.rm = TRUE), .groups = "drop") %>%
-ggplot(aes(x = monthLabel, y = PGR_mean, color = Station, group = Station)) +
-geom_line(size = 1) +
-geom_point(size = 2) +
-labs(title = "Horotiu Fertility 1.5 Monthly Profile", y = "Mean PGR", x = "Month") +
-theme_minimal() + 
-theme(plot.title = element_text(hjust = 0.5))
+```{r peak_trough_plot, fig.align='center', echo=FALSE}
+p_lollipop_peak_low <- ggplot(peaks_troughs, aes(x = anchorYear)) +
+  geom_segment(
+    aes(y = low_value, yend = peak_value, xend = anchorYear),
+    colour = "grey70"
+  ) +
+  geom_point(aes(y = peak_value), colour = "darkgreen", size = 2) +
+  geom_point(aes(y = low_value),  colour = "firebrick", size = 2) +
+  geom_text(
+    aes(y = peak_value, label = peak_month),
+    colour = "darkgreen", vjust = -0.8, size = 3
+  ) +
+  geom_text(
+    aes(y = low_value, label = low_month),
+    colour = "firebrick", vjust = 1.4, size = 3
+  ) +
+  facet_wrap(~ Station, scales = "free_y") +
+  labs(
+    title = "Peak and Trough Monthly Mean Growth",
+    x = "Production Year", y = "Mean Monthly PGR"
+  ) +
+  theme_minimal() + 
+  theme(plot.title = element_text(hjust = 0.5))
 
-p_horotiu
-save_plot("horotiu_fertility1_5_profile", p_horotiu)
+p_lollipop_peak_low
 ```
+
+This lollipop plot visualizes the peak and through through months of PGR per production year for each station. It shows the best and worst performing months. 
+
+```{r violin_station_season, fig.align='center', echo=FALSE}
+season_cols <- c(
+  "Summer"="#F2C14E",
+  "Autumn"="#D96C06",
+  "Winter"="#3772A1",
+  "Spring"="#2E8B57"
+)
+
+p_violin <- ggplot(monthly_mean, aes(x = Station, y = mean_PGR, fill = Season)) +
+  geom_violin(trim = TRUE, alpha = 0.6) +
+  scale_fill_manual(values = season_cols) +
+  coord_flip() +
+  labs(
+    title = "Distribution of Monthly PGR by Station and Season",
+    x = "Station", y = "Mean Monthly PGR"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p_violin
+```
+
+This violin plot display the distribution of PGR by station and season.
